@@ -149,6 +149,18 @@ def _expired(now: datetime) -> sa.ColumnElement[bool]:
     )
 
 
+def _matches(expected: ScheduledTask) -> sa.ColumnElement[bool]:
+    return sa.and_(
+        scheduled_task.c.schedule == expected.schedule,
+        scheduled_task.c.prompt == expected.prompt,
+        scheduled_task.c.description == expected.description,
+        scheduled_task.c.next_run_at == expected.next_run_at,
+        scheduled_task.c.expires_at.is_not_distinct_from(expected.expires_at),
+        scheduled_task.c.paused == expected.paused,
+        scheduled_task.c.internet_access == (expected.internet_access is None),
+    )
+
+
 def _task(row: sa.RowMapping) -> ScheduledTask:
     """The one builder every `ScheduleStore` read funnels through — SQLite hands naive datetimes
     back, so every timing mark leaves here aware UTC and no consumer re-normalizes."""
@@ -309,6 +321,7 @@ class ScheduleStore:
                             scheduled_task.c.conversation_id == expected.conversation_id,
                             scheduled_task.c.name == expected.name,
                             self._creator_matches(expected),
+                            _matches(expected),
                         )
                         .values(
                             schedule=schedule,
@@ -344,6 +357,7 @@ class ScheduleStore:
                     scheduled_task.c.conversation_id == expected.conversation_id,
                     scheduled_task.c.name == expected.name,
                     self._creator_matches(expected),
+                    _matches(expected),
                 )
             )
         if deleted.rowcount == 0:

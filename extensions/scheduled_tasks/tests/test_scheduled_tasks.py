@@ -1429,6 +1429,49 @@ async def test_update_cannot_overwrite_a_task_recreated_after_authorization(
     assert remaining.prompt == "Bob's digest"
 
 
+async def test_stale_task_snapshot_cannot_overwrite_or_cancel_a_newer_definition(
+    db: None,
+) -> None:
+    workspace_id, agent_id, conversation_id = await _seed()
+    creator = await _member(workspace_id)
+    scheduler = _store()
+    first_fire = datetime.now(UTC) + timedelta(hours=1)
+    second_fire = first_fire + timedelta(hours=1)
+
+    with ws(workspace_id), agent(agent_id):
+        original = await scheduler.create(
+            conversation_id,
+            "digest",
+            DAILY_9AM,
+            "original",
+            "original",
+            first_fire,
+            created_by_member_id=creator,
+        )
+        current = await scheduler.update(
+            original,
+            DAILY_9AM,
+            "current",
+            "current",
+            second_fire,
+            paused=False,
+        )
+        with pytest.raises(ValueError, match="changed while editing"):
+            await scheduler.update(
+                original,
+                DAILY_9AM,
+                "stale",
+                "stale",
+                second_fire,
+                paused=False,
+            )
+        with pytest.raises(ValueError, match="changed while cancelling"):
+            await scheduler.cancel(original)
+        [remaining] = await scheduler.list()
+
+    assert remaining == current
+
+
 @pytest.mark.parametrize(
     "existing",
     [False, True],
